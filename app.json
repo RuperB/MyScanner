@@ -1,17 +1,36 @@
 {
   "expo": {
-    "name": "temp_app",
-    "slug": "temp_app",
+    "name": "MyScanner",
+    "slug": "my-scanner",
     "version": "1.0.0",
     "orientation": "portrait",
+    "experiments": {
+      "baseUrl": "/MyScanner"
+    },
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "scheme": [
+      "myscanner",
+      "com.myscanner.app",
+      "com.googleusercontent.apps.496114489346-8besnte5oqemdkqr5vasr1oqtdfic750",
+      "com.googleusercontent.apps.496114489346-8781kjc9vstk9rgidn26oe8r3n0ftt94"
+    ],
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.myscanner.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "MyScanner necesita acceso a la cámara para escanear y digitalizar tus documentos.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.myscanner.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0F172A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -20,6 +39,21 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "MyScanner necesita acceso a la cámara para escanear y digitalizar tus documentos."
+        }
+      ],
+      "expo-sharing",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d3d7e3c7-d3f5-4684-b02f-982681e8e3c3"
+      }
     }
   }
 }
