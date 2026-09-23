@@ -26,7 +26,7 @@ export const DEFAULT_GOOGLE_CLIENT_IDS = {
   android: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID || '496114489346-8besnte5oqemdkqr5vasr1oqtdfic750.apps.googleusercontent.com',
 };
 
-export const DEFAULT_GOOGLE_CLIENT_SECRET = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_SECRET || '';
+export const DEFAULT_GOOGLE_CLIENT_SECRET = '';
 
 export function cleanGoogleToken(rawToken: string): string {
   let token = rawToken.trim();
