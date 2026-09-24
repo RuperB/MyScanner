@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import {
   AppSettings,
   GoogleUserProfile,
@@ -67,7 +68,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     async function initApp() {
       try {
         setIsLoading(true);
-        const [savedSettings, savedTokens, savedProfile, savedDocs] = await Promise.all([
+        const [extractedOAuth, savedSettings, savedTokens, savedProfile, savedDocs] = await Promise.all([
+          Platform.OS === 'web' ? googleAuthService.checkAndExtractWebOAuthToken() : Promise.resolve(null),
           storageService.getSettings(),
           storageService.getAuthTokens(),
           storageService.getUserProfile(),
@@ -76,7 +78,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         setSettings(savedSettings);
 
-        if (savedTokens?.accessToken) {
+        if (extractedOAuth) {
+          setAccessToken(extractedOAuth.tokens.accessToken);
+          setUserProfile(extractedOAuth.profile);
+        } else if (savedTokens?.accessToken) {
           setAccessToken(savedTokens.accessToken);
           // Try background refresh if expired or near expiration
           googleAuthService.getValidAccessToken().then((freshToken) => {
@@ -84,10 +89,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               setAccessToken(freshToken);
             }
           });
-        }
-
-        if (savedProfile) {
-          setUserProfile(savedProfile);
+          if (savedProfile) {
+            setUserProfile(savedProfile);
+          }
         }
 
         setDocuments(savedDocs);

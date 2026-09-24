@@ -67,6 +67,60 @@ export const googleAuthService = {
   },
 
   /**
+   * Checks if current URL has OAuth access_token in hash/search and saves it
+   */
+  async checkAndExtractWebOAuthToken(): Promise<{ tokens: GoogleAuthTokens; profile: GoogleUserProfile } | null> {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.location) {
+      return null;
+    }
+
+    try {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+
+      const rawParams = hash.includes('access_token=')
+        ? hash.replace(/^#/, '')
+        : search.includes('access_token=')
+        ? search.replace(/^\?/, '')
+        : '';
+
+      if (!rawParams) {
+        return null;
+      }
+
+      const params = new URLSearchParams(rawParams);
+      const accessToken = params.get('access_token');
+      const expiresIn = parseInt(params.get('expires_in') || '3600', 10);
+
+      if (accessToken) {
+        const cleanTok = cleanGoogleToken(accessToken);
+        const tokens: GoogleAuthTokens = {
+          accessToken: cleanTok,
+          expiresIn: expiresIn,
+          tokenType: 'Bearer',
+          issuedAt: Date.now(),
+        };
+
+        await storageService.saveAuthTokens(tokens);
+        const profile = await this.fetchUserProfile(cleanTok);
+
+        // Remove token from browser address bar without reloading
+        try {
+          const cleanUrl = window.location.origin + window.location.pathname;
+          window.history.replaceState(null, '', cleanUrl);
+        } catch (e) {
+          console.log('Error cleaning URL:', e);
+        }
+
+        return { tokens, profile };
+      }
+    } catch (e) {
+      console.warn('Error extracting web OAuth tokens:', e);
+    }
+    return null;
+  },
+
+  /**
    * Performs interactive Google Sign-In with OAuth 2.0
    */
   async loginWithGoogleOAuth(customClientId?: string): Promise<{ tokens: GoogleAuthTokens; profile: GoogleUserProfile }> {
@@ -107,37 +161,49 @@ export const googleAuthService = {
         `scope=${encodeURIComponent(GOOGLE_SCOPES.join(' '))}&` +
         `prompt=consent`;
 
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+      try {
+        const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
-      if (result.type === 'success' && result.url) {
-        const urlStr = result.url;
-        const hashPart = urlStr.includes('#') ? urlStr.split('#')[1] : '';
-        const queryPart = urlStr.includes('?') ? urlStr.split('?')[1] : '';
-        const params = new URLSearchParams(hashPart || queryPart);
+        if (result && result.type === 'success' && result.url) {
+          const urlStr = result.url;
+          const hashPart = urlStr.includes('#') ? urlStr.split('#')[1] : '';
+          const queryPart = urlStr.includes('?') ? urlStr.split('?')[1] : '';
+          const params = new URLSearchParams(hashPart || queryPart);
 
-        const accessToken = params.get('access_token');
-        const expiresIn = parseInt(params.get('expires_in') || '3600', 10);
+          const accessToken = params.get('access_token');
+          const expiresIn = parseInt(params.get('expires_in') || '3600', 10);
 
-        if (!accessToken) {
-          const errorParam = params.get('error') || params.get('error_description');
-          throw new Error(errorParam ? `Error de Google: ${errorParam}` : 'No se recibió el token de acceso de Google.');
+          if (accessToken) {
+            const cleanTok = cleanGoogleToken(accessToken);
+            const tokens: GoogleAuthTokens = {
+              accessToken: cleanTok,
+              expiresIn: expiresIn,
+              tokenType: 'Bearer',
+              issuedAt: Date.now(),
+            };
+
+            await storageService.saveAuthTokens(tokens);
+            const profile = await this.fetchUserProfile(cleanTok);
+            return { tokens, profile };
+          }
         }
-
-        const tokens: GoogleAuthTokens = {
-          accessToken: accessToken,
-          expiresIn: expiresIn,
-          tokenType: 'Bearer',
-          issuedAt: Date.now(),
-        };
-
-        await storageService.saveAuthTokens(tokens);
-        const profile = await this.fetchUserProfile(tokens.accessToken);
-        return { tokens, profile };
-      } else if (result.type === 'cancel' || result.type === 'dismiss') {
-        throw new Error('Inicio de sesión cancelado por el usuario.');
-      } else {
-        throw new Error('No se pudo completar la autenticación con Google.');
+      } catch (err) {
+        console.warn('WebBrowser auth session warning:', err);
       }
+
+      // Check if redirect already stored tokens or in URL hash
+      const extracted = await this.checkAndExtractWebOAuthToken();
+      if (extracted) {
+        return extracted;
+      }
+
+      // Fallback for mobile browsers: navigate directly to Google OAuth
+      if (typeof window !== 'undefined') {
+        window.location.href = authUrl;
+        return new Promise(() => {});
+      }
+
+      throw new Error('Inicio de sesión cancelado o no completado.');
     }
 
     // Native Mobile OAuth Flow (response_type=code)

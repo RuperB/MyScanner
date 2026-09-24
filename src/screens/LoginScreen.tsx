@@ -26,19 +26,20 @@ export const LoginScreen: React.FC = () => {
   const [tokenInput, setTokenInput] = useState<string>('');
   const [showTokenInput, setShowTokenInput] = useState<boolean>(false);
 
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      navigation.navigate('MainTabs');
+    }
+  }, [isAuthenticated, navigation]);
+
   const handleGoogleSignIn = async () => {
     try {
       setIsLoading(true);
       await loginWithGoogle();
-      Alert.alert('¡Bienvenido!', 'Has iniciado sesión con Google correctamente.', [
-        {
-          text: 'Comenzar',
-          onPress: () => navigation.navigate('MainTabs'),
-        },
-      ]);
+      navigation.navigate('MainTabs');
     } catch (error: any) {
       console.error('Google Sign In Error:', error);
-      if (!error.message?.includes('cancelado')) {
+      if (!error.message?.includes('cancelado') && !error.message?.includes('cancel')) {
         Alert.alert(
           'Conexión Google Drive',
           error.message || 'No se pudo iniciar sesión. Puedes ingresar tu token directamente o continuar en modo local.'
