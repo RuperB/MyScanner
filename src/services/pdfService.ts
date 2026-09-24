@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { PDFDocument } from 'pdf-lib';
 import { ScannedPage } from '../types';
@@ -5,7 +6,7 @@ import { ScannedPage } from '../types';
 /**
  * Converts a base64 string to a Uint8Array
  */
-function base64ToUint8Array(base64: string): Uint8Array {
+export function base64ToUint8Array(base64: string): Uint8Array {
   const binaryString = atob(base64);
   const len = binaryString.length;
   const bytes = new Uint8Array(len);
@@ -13,6 +14,42 @@ function base64ToUint8Array(base64: string): Uint8Array {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes;
+}
+
+/**
+ * Reads any URI (data URL, blob URL, http URL, or native file URI) and returns Uint8Array
+ */
+export async function readUriAsBytes(uri: string): Promise<Uint8Array> {
+  // 1. If it's a data URL (e.g. data:image/jpeg;base64,...)
+  if (uri.startsWith('data:')) {
+    const base64Index = uri.indexOf('base64,');
+    if (base64Index !== -1) {
+      const base64 = uri.substring(base64Index + 7);
+      return base64ToUint8Array(base64);
+    }
+  }
+
+  // 2. On Web or if it's blob: or http(s): URL
+  if (Platform.OS === 'web' || uri.startsWith('blob:') || uri.startsWith('http')) {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    const arrayBuffer = await blob.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
+  }
+
+  // 3. On Native (iOS / Android file://)
+  try {
+    const base64Data = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return base64ToUint8Array(base64Data);
+  } catch (err) {
+    // Fallback using fetch if FileSystem fails
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    const arrayBuffer = await blob.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
+  }
 }
 
 /**
@@ -66,10 +103,7 @@ export const pdfService = {
 
       for (let i = 0; i < 2; i++) {
         const page = pages[i];
-        const base64Data = await FileSystem.readAsStringAsync(page.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        const imageBytes = base64ToUint8Array(base64Data);
+        const imageBytes = await readUriAsBytes(page.uri);
         let embeddedImage;
         try {
           embeddedImage = await pdfDoc.embedJpg(imageBytes);
@@ -98,11 +132,7 @@ export const pdfService = {
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
         try {
-          const base64Data = await FileSystem.readAsStringAsync(page.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-
-          const imageBytes = base64ToUint8Array(base64Data);
+          const imageBytes = await readUriAsBytes(page.uri);
           let embeddedImage;
 
           try {
@@ -131,21 +161,27 @@ export const pdfService = {
       }
     }
 
-    const pdfBase64 = await pdfDoc.saveAsBase64({ dataUri: false });
-
+    const pdfBytes = await pdfDoc.save();
     const safeTitle = sanitizeFileName(customTitle) || 'Documento';
     const dateFormatted = formatScanDate(scanDate);
     const fileName = `${safeTitle}_${dateFormatted}.pdf`;
 
-    const docDirectory = FileSystem.documentDirectory || '';
-    const fileUri = `${docDirectory}${fileName}`;
+    let fileUri = '';
+    let fileSize = pdfBytes.byteLength;
 
-    await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    const fileInfo = await FileSystem.getInfoAsync(fileUri);
-    const fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size || 0 : 0;
+    if (Platform.OS === 'web') {
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      fileUri = URL.createObjectURL(blob);
+    } else {
+      const docDirectory = FileSystem.documentDirectory || '';
+      fileUri = `${docDirectory}${fileName}`;
+      const pdfBase64 = await pdfDoc.saveAsBase64({ dataUri: false });
+      await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const fileInfo = await FileSystem.getInfoAsync(fileUri);
+      fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size || fileSize : fileSize;
+    }
 
     return {
       uri: fileUri,

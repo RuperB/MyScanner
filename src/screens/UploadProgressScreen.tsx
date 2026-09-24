@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -166,6 +167,14 @@ export const UploadProgressScreen: React.FC = () => {
           mimeType: 'application/pdf',
           dialogTitle: 'Compartir PDF',
         });
+      } else if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const link = document.createElement('a');
+        link.href = createdDoc.pdfUri;
+        link.download = createdDoc.pdfFileName || `${title}.pdf`;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
         Alert.alert('Aviso', 'La función de compartir no está disponible en este dispositivo.');
       }

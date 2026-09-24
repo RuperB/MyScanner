@@ -1,6 +1,6 @@
-import * as FileSystem from 'expo-file-system/legacy';
 import { DriveFolderItem, DriveUploadResult, UploadStep } from '../types';
 import { cleanGoogleToken, googleAuthService } from './googleAuthService';
+import { readUriAsBytes } from './pdfService';
 
 const DRIVE_FILES_ENDPOINT = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_ENDPOINT = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,parents';
@@ -156,15 +156,7 @@ export const googleDriveService = {
   ): Promise<{ fileId: string; fileName: string; webViewLink: string }> {
     onStepChange?.('uploading_file', `Subiendo archivo "${fileName}" a Google Drive...`);
 
-    const base64Data = await FileSystem.readAsStringAsync(pdfUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    const binaryString = atob(base64Data);
-    const pdfBytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      pdfBytes[i] = binaryString.charCodeAt(i);
-    }
+    const pdfBytes = await readUriAsBytes(pdfUri);
 
     const metadata = JSON.stringify({
       name: fileName,

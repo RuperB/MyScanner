@@ -3,6 +3,7 @@ import {
   Alert,
   FlatList,
   Linking,
+  Platform,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -56,6 +57,14 @@ export const HistoryScreen: React.FC = () => {
           mimeType: 'application/pdf',
           dialogTitle: `Compartir ${doc.title}`,
         });
+      } else if (Platform.OS === 'web' && typeof document !== 'undefined' && doc.pdfUri) {
+        const link = document.createElement('a');
+        link.href = doc.pdfUri;
+        link.download = doc.pdfFileName || `${doc.title}.pdf`;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
         Alert.alert('Aviso', 'Función de compartir no disponible.');
       }
