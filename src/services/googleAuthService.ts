@@ -46,6 +46,17 @@ export function cleanGoogleToken(rawToken: string): string {
 
 export const googleAuthService = {
   getRedirectUri(clientId?: string): string {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.location) {
+        const origin = window.location.origin;
+        let pathname = window.location.pathname;
+        if (!pathname.endsWith('/')) {
+          pathname += '/';
+        }
+        return `${origin}${pathname}`;
+      }
+      return 'https://ruperb.github.io/MyScanner/';
+    }
     if ((Platform.OS === 'ios' || Platform.OS === 'android') && clientId && clientId.includes('.apps.googleusercontent.com')) {
       const reversed = 'com.googleusercontent.apps.' + clientId.replace('.apps.googleusercontent.com', '');
       return `${reversed}:/oauthredirect`;
@@ -56,7 +67,7 @@ export const googleAuthService = {
   },
 
   /**
-   * Performs interactive Google Sign-In with OAuth 2.0 (Requesting offline access for Refresh Token)
+   * Performs interactive Google Sign-In with OAuth 2.0
    */
   async loginWithGoogleOAuth(customClientId?: string): Promise<{ tokens: GoogleAuthTokens; profile: GoogleUserProfile }> {
     const settings = await storageService.getSettings();
@@ -86,6 +97,50 @@ export const googleAuthService = {
 
     const redirectUri = this.getRedirectUri(clientId);
 
+    if (Platform.OS === 'web') {
+      // Browser SPA OAuth Flow (response_type=token)
+      const authUrl =
+        `${GOOGLE_AUTH_ENDPOINT}?` +
+        `client_id=${encodeURIComponent(clientId)}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `response_type=token&` +
+        `scope=${encodeURIComponent(GOOGLE_SCOPES.join(' '))}&` +
+        `prompt=consent`;
+
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+
+      if (result.type === 'success' && result.url) {
+        const urlStr = result.url;
+        const hashPart = urlStr.includes('#') ? urlStr.split('#')[1] : '';
+        const queryPart = urlStr.includes('?') ? urlStr.split('?')[1] : '';
+        const params = new URLSearchParams(hashPart || queryPart);
+
+        const accessToken = params.get('access_token');
+        const expiresIn = parseInt(params.get('expires_in') || '3600', 10);
+
+        if (!accessToken) {
+          const errorParam = params.get('error') || params.get('error_description');
+          throw new Error(errorParam ? `Error de Google: ${errorParam}` : 'No se recibió el token de acceso de Google.');
+        }
+
+        const tokens: GoogleAuthTokens = {
+          accessToken: accessToken,
+          expiresIn: expiresIn,
+          tokenType: 'Bearer',
+          issuedAt: Date.now(),
+        };
+
+        await storageService.saveAuthTokens(tokens);
+        const profile = await this.fetchUserProfile(tokens.accessToken);
+        return { tokens, profile };
+      } else if (result.type === 'cancel' || result.type === 'dismiss') {
+        throw new Error('Inicio de sesión cancelado por el usuario.');
+      } else {
+        throw new Error('No se pudo completar la autenticación con Google.');
+      }
+    }
+
+    // Native Mobile OAuth Flow (response_type=code)
     const authUrl =
       `${GOOGLE_AUTH_ENDPOINT}?` +
       `client_id=${encodeURIComponent(clientId)}&` +
@@ -113,7 +168,6 @@ export const googleAuthService = {
         redirect_uri: redirectUri,
         grant_type: 'authorization_code',
       };
-      // Native iOS and Android clients are public OAuth clients (no client_secret needed)
       if (Platform.OS !== 'ios' && Platform.OS !== 'android' && DEFAULT_GOOGLE_CLIENT_SECRET) {
         tokenBody.client_secret = DEFAULT_GOOGLE_CLIENT_SECRET;
       }
